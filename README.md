@@ -136,6 +136,7 @@ alongside the code they describe. Start with Getting Started; the Manual is the 
 | [Obsidian & Daily Workflow](golden-thread-plugin/OBSIDIAN-WORKFLOW.md) · [PDF](golden-thread-plugin/OBSIDIAN-WORKFLOW.pdf) | Living in the vault day to day — daily notes, properties, Dataview |
 | [Developer Guide](golden-thread-plugin/golden-thread-developer-guide.html) · [PDF](golden-thread-plugin/golden-thread-developer-guide.pdf) | Internals: hooks, scripts, the component manifest, extending the plugin |
 | [Plugin Documentation](golden-thread-plugin/golden-thread-docs.md) · [HTML](golden-thread-plugin/golden-thread-docs.html) · [PDF](golden-thread-plugin/golden-thread-docs.pdf) | The combined document — overview, Core rules, every skill, install and operation, in one file. Refreshed to current on 2026-09-09 (it had been frozen at gt 0.6.0 for six releases); now tracks the shipped release and is checked for drift by `build-docs.py` |
+| [`docs/how-it-works.html`](docs/how-it-works.html) | An animated 3D walkthrough for a first-time reader: the two problems, the vault, the promotion ladder, and the hooks that re-assert the rules every turn. Open the file in a browser |
 | [`docs/workflow.html`](docs/workflow.html) · [`docs/ingesting.html`](docs/ingesting.html) | Standalone diagrams of the work and ingest loops |
 | `golden-thread.pdf` | The earliest write-up here (2026-08-10); predates the current plugin layout, kept for reference |
 
