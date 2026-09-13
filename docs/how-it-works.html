@@ -1,0 +1,1004 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>How Golden Thread Works</title>
+<meta name="description" content="An animated walkthrough of the Golden Thread plugin: the two problems it solves, the vault, the promotion ladder, and the hooks that re-assert the rules every turn.">
+<style>
+:root {
+  --ground:#F7F8FA; --surface:#FFFFFF; --surface-2:#EDEFF3; --surface-3:#E4E8EE;
+  --ink:#161B22; --ink-2:#414B57; --ink-3:#6B7482;
+  --rule:#DBE0E7; --rule-soft:#E8EBF0;
+  --accent:#8A6A17; --accent-bright:#A8842A; --accent-wash:#F6F0E0;
+  --good:#2F6B4F; --warn:#8A5A1A; --crit:#A33A32;
+  --shadow:0 1px 2px rgba(22,27,34,.05), 0 8px 24px -12px rgba(22,27,34,.12);
+  --sans:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+  --mono:ui-monospace,"SF Mono",SFMono-Regular,Menlo,Consolas,"Liberation Mono",monospace;
+  /* stage tokens: the 3D scene reads these at run time */
+  --stage:#E9ECF1; --stage-grid:#CDD3DC; --stage-grid-2:#DDE2E9; --stage-fog:#E9ECF1;
+  --s-ink:#161B22; --s-ink-soft:#6B7482;
+  --s-gold:#B8891F; --s-gold-bright:#D9A72E;
+  --s-session:#5B7FA6; --s-project:#9AA5B4; --s-vault:#7B6C3A;
+  --s-hook:#2F8F84; --s-rule:#C79A2B; --s-task:#8A94A3;
+  --s-good:#2F9A62; --s-crit:#C8443A;
+  --s-t0:#8A94A3; --s-t1:#A88B45; --s-t2:#B8962F; --s-t3:#CFA62A; --s-t4:#E4B93A;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --ground:#12161C; --surface:#181D25; --surface-2:#1E242E; --surface-3:#252C38;
+    --ink:#E8EBF0; --ink-2:#A8B2BF; --ink-3:#79838F;
+    --rule:#2A313B; --rule-soft:#222933;
+    --accent:#D9AE4E; --accent-bright:#EAC57A; --accent-wash:#231E13;
+    --good:#6FBF95; --warn:#D9A155; --crit:#E0786E;
+    --shadow:0 1px 2px rgba(0,0,0,.4), 0 8px 24px -12px rgba(0,0,0,.6);
+    --stage:#0F1318; --stage-grid:#232A34; --stage-grid-2:#1A2028; --stage-fog:#0F1318;
+    --s-ink:#E8EBF0; --s-ink-soft:#8C97A6;
+    --s-gold:#D9AE4E; --s-gold-bright:#F0CB72;
+    --s-session:#7FA6D6; --s-project:#5F6B7C; --s-vault:#8C7A40;
+    --s-hook:#4FC2B4; --s-rule:#E0B54A; --s-task:#59636F;
+    --s-good:#5FCB8C; --s-crit:#E0655A;
+    --s-t0:#59636F; --s-t1:#8C7444; --s-t2:#B0912F; --s-t3:#D2AB38; --s-t4:#F0CB72;
+  }
+}
+:root[data-theme="dark"] {
+  --ground:#12161C; --surface:#181D25; --surface-2:#1E242E; --surface-3:#252C38;
+  --ink:#E8EBF0; --ink-2:#A8B2BF; --ink-3:#79838F;
+  --rule:#2A313B; --rule-soft:#222933;
+  --accent:#D9AE4E; --accent-bright:#EAC57A; --accent-wash:#231E13;
+  --good:#6FBF95; --warn:#D9A155; --crit:#E0786E;
+  --shadow:0 1px 2px rgba(0,0,0,.4), 0 8px 24px -12px rgba(0,0,0,.6);
+  --stage:#0F1318; --stage-grid:#232A34; --stage-grid-2:#1A2028; --stage-fog:#0F1318;
+  --s-ink:#E8EBF0; --s-ink-soft:#8C97A6;
+  --s-gold:#D9AE4E; --s-gold-bright:#F0CB72;
+  --s-session:#7FA6D6; --s-project:#5F6B7C; --s-vault:#8C7A40;
+  --s-hook:#4FC2B4; --s-rule:#E0B54A; --s-task:#59636F;
+  --s-good:#5FCB8C; --s-crit:#E0655A;
+  --s-t0:#59636F; --s-t1:#8C7444; --s-t2:#B0912F; --s-t3:#D2AB38; --s-t4:#F0CB72;
+}
+
+* { box-sizing:border-box; }
+html { scroll-behavior:smooth; }
+@media (prefers-reduced-motion: reduce) { html { scroll-behavior:auto; } }
+body {
+  margin:0; background:var(--ground); color:var(--ink);
+  font-family:var(--sans); font-size:17px; line-height:1.65;
+  -webkit-font-smoothing:antialiased;
+}
+a { color:var(--accent); text-decoration-thickness:1px; text-underline-offset:2px; }
+a:hover { color:var(--accent-bright); }
+code, kbd {
+  font-family:var(--mono); font-size:.86em;
+  background:var(--surface-2); border:1px solid var(--rule-soft);
+  padding:1px 5px; border-radius:4px; white-space:nowrap;
+}
+:focus-visible { outline:2px solid var(--accent); outline-offset:2px; }
+
+.wrap { max-width:1480px; margin:0 auto; padding-block:0 96px; padding-inline:32px; }
+
+/* ---- masthead ---- */
+.mast { padding:64px 0 36px; border-bottom:1px solid var(--rule); }
+.eyebrow {
+  font-family:var(--mono); font-size:11px; letter-spacing:.16em;
+  text-transform:uppercase; color:var(--accent); margin:0 0 20px;
+  display:flex; align-items:center; gap:10px;
+}
+.eyebrow::before { content:""; width:26px; height:2px; background:var(--accent); flex:none; }
+h1 {
+  font-size:clamp(34px,5.5vw,54px); line-height:1.06; letter-spacing:-.025em;
+  font-weight:700; margin:0 0 20px; text-wrap:balance; max-width:18ch;
+}
+.standfirst { font-size:clamp(17px,2vw,19px); color:var(--ink-2); margin:0; max-width:62ch; line-height:1.6; }
+.meta {
+  margin-top:26px; display:flex; flex-wrap:wrap; gap:10px 28px;
+  font-family:var(--mono); font-size:12px; color:var(--ink-3);
+}
+.meta b { color:var(--ink-2); font-weight:500; }
+
+/* ---- the two-column scrollytelling body ---- */
+.story { display:grid; grid-template-columns:minmax(0,7fr) minmax(0,5fr); gap:0 48px; align-items:start; }
+.stage-col { position:sticky; top:0; height:100vh; height:100dvh; padding:20px 0; }
+.stage {
+  position:relative; height:100%; border-radius:14px; overflow:hidden;
+  background:var(--stage); border:1px solid var(--rule); box-shadow:var(--shadow);
+  touch-action:pan-y; user-select:none; -webkit-user-select:none;
+}
+.stage canvas { display:block; width:100%; height:100%; cursor:grab; }
+.stage.dragging canvas { cursor:grabbing; }
+.stage-fallback {
+  position:absolute; inset:0; display:none; place-items:center; padding:32px; text-align:center;
+  color:var(--ink-2); font-size:15px; line-height:1.6;
+}
+.stage.no-gl .stage-fallback { display:grid; }
+.stage.no-gl canvas { display:none; }
+
+.rail {
+  position:absolute; left:0; right:0; bottom:0; padding:14px 16px 14px;
+  display:flex; flex-direction:column; gap:8px; pointer-events:none;
+  background:linear-gradient(to top, var(--stage) 30%, transparent);
+}
+.rail-now { font-family:var(--mono); font-size:12px; color:var(--ink-3); display:flex; gap:10px; align-items:baseline; }
+.rail-now b { color:var(--ink); font-weight:500; font-family:var(--sans); font-size:14px; }
+.rail-dots { display:flex; gap:6px; pointer-events:auto; }
+.rail-dots button {
+  appearance:none; border:1px solid var(--rule); background:var(--surface);
+  color:var(--ink-3); font:500 11px var(--mono); width:28px; height:26px; border-radius:6px;
+  cursor:pointer; padding:0;
+}
+.rail-dots button[aria-current="true"] { background:var(--accent); border-color:var(--accent); color:var(--ground); }
+.rail-dots button:hover { color:var(--ink); border-color:var(--ink-3); }
+.hint {
+  position:absolute; top:12px; right:14px; font-family:var(--mono); font-size:11px;
+  color:var(--ink-3); background:var(--surface); border:1px solid var(--rule);
+  padding:4px 9px; border-radius:6px; opacity:.9;
+}
+
+.steps { padding:20px 0 0; }
+.step {
+  min-height:88vh; display:flex; flex-direction:column; justify-content:center;
+  padding:24px 0; border-top:1px solid var(--rule-soft);
+}
+.step:first-child { border-top:0; }
+.step .n {
+  font-family:var(--mono); font-size:11px; letter-spacing:.16em; text-transform:uppercase;
+  color:var(--ink-3); margin:0 0 10px;
+}
+.step .n b { color:var(--accent); font-weight:500; }
+.step h2 { font-size:clamp(22px,2.4vw,28px); line-height:1.2; letter-spacing:-.015em; margin:0 0 14px; text-wrap:balance; }
+.step p { margin:0 0 12px; max-width:56ch; color:var(--ink-2); }
+.step p strong { color:var(--ink); font-weight:600; }
+.step .key {
+  margin:14px 0 0; padding:12px 14px; border-left:3px solid var(--accent); background:var(--accent-wash);
+  color:var(--ink); font-size:15.5px; line-height:1.55; max-width:56ch;
+}
+.step .stagenote { font-family:var(--mono); font-size:12px; color:var(--ink-3); margin:12px 0 0; max-width:56ch; }
+.step .stagenote::before { content:"on the stage · "; color:var(--accent); }
+
+/* ---- reference ---- */
+.ref { border-top:1px solid var(--rule); padding-top:56px; margin-top:24px; }
+.ref h2 { font-size:clamp(24px,3vw,32px); letter-spacing:-.02em; margin:0 0 8px; }
+.ref .lede { color:var(--ink-2); max-width:62ch; margin:0 0 36px; }
+.ref-blocks { display:flex; flex-direction:column; gap:44px; max-width:1120px; }
+.ref-block { display:flex; flex-direction:column; gap:14px; }
+.ref h3 { font-size:17px; margin:0; letter-spacing:-.01em; }
+.tbl { overflow-x:auto; }
+table { border-collapse:collapse; width:100%; min-width:560px; font-size:14.5px; }
+th, td { text-align:left; vertical-align:top; padding:10px 16px 10px 0; border-bottom:1px solid var(--rule-soft); }
+th:last-child, td:last-child { padding-right:0; }
+th { font-family:var(--mono); font-size:11px; letter-spacing:.12em; text-transform:uppercase; color:var(--ink-3); font-weight:500; white-space:nowrap; }
+td .pill { white-space:nowrap; }
+.pill { font-family:var(--mono); font-size:11px; padding:2px 7px; border-radius:4px; border:1px solid var(--rule); color:var(--ink-2); }
+.pill.v { border-color:var(--good); color:var(--good); }
+.loop { font-family:var(--mono); font-size:13.5px; line-height:1.75; color:var(--ink-2); margin:0; white-space:pre; overflow-x:auto; padding-bottom:4px; }
+.loop b { color:var(--ink); font-weight:600; }
+.loop i { color:var(--accent); font-style:normal; }
+.next { display:flex; flex-wrap:wrap; gap:10px; margin-top:14px; }
+.ref .read-next { margin-top:52px; }
+.next a {
+  text-decoration:none; color:var(--ink-2); font-size:13.5px; padding:6px 13px;
+  border:1px solid var(--rule); border-radius:999px; background:var(--surface);
+}
+.next a:hover { color:var(--ink); border-color:var(--ink-3); }
+
+@media (max-width: 980px) {
+  .wrap { padding-inline:16px; }
+  .mast { padding:40px 0 28px; }
+  .story { grid-template-columns:1fr; gap:0; }
+  .stage-col { height:46vh; height:46dvh; padding:12px 0; z-index:2; }
+  .step { min-height:0; padding:28px 0; }
+  .hint { display:none; }
+}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<header class="mast">
+  <p class="eyebrow">Golden Thread · how it works</p>
+  <h1>One vault, re-read every turn.</h1>
+  <p class="standfirst">Golden Thread is a Claude Code plugin that gives every AI session you run one shared memory, an Obsidian vault of plain markdown, and then makes sure the rules in that vault are actually followed. Eight scenes below show the two problems it solves and the machinery that solves them. Drag the stage to look around.</p>
+  <div class="meta">
+    <span>plugin <b>gt 0.12.6</b></span>
+    <span><b>10</b> Core rules, <b>5</b> validated</span>
+    <span><b>3</b> hook points per turn</span>
+    <span>source <b>this repository</b></span>
+  </div>
+</header>
+
+<section class="story" id="story">
+  <div class="stage-col">
+    <div class="stage" id="stage">
+      <canvas id="c" aria-label="Animated 3D diagram of the Golden Thread system. The written steps beside it describe each scene."></canvas>
+      <div class="stage-fallback">The 3D stage needs WebGL and a connection to cdnjs for three.js. The written walkthrough beside it is complete on its own.</div>
+      <div class="hint" aria-hidden="true">drag to orbit</div>
+      <div class="rail" aria-hidden="false">
+        <div class="rail-now"><span id="railN">1 / 8</span><b id="railT">Every session starts with amnesia</b></div>
+        <div class="rail-dots" id="railDots" role="tablist" aria-label="Scenes"></div>
+      </div>
+    </div>
+  </div>
+
+  <div class="steps" id="steps">
+
+    <article class="step" data-act="0" id="s1">
+      <p class="n"><b>Problem 1</b> · scene 1 of 8</p>
+      <h2>Every session starts with amnesia</h2>
+      <p>Claude Code keeps nothing between sessions. You open a project, explain the conventions, the session learns three things about the deploy path, and then it ends. The next session starts blank.</p>
+      <p>What survives is whatever you wrote by hand into a <code>.claude/memory/</code> folder or a <code>CLAUDE.md</code>, per project, in whichever shape you used that day. Three projects mean three scattered piles, and a finding from one project never reaches the other two.</p>
+      <p class="stagenote">three projects, sessions flicker in and out above them, and the facts each session learned drift off and fade.</p>
+    </article>
+
+    <article class="step" data-act="1" id="s2">
+      <p class="n"><b>Problem 2</b> · scene 2 of 8</p>
+      <h2>Writing a rule down does not mean it is followed</h2>
+      <p>This is the problem most memory systems skip. A rule can sit in a loaded <code>CLAUDE.md</code> for a whole session and still be dropped for dozens of turns. It was never deleted. The task in front of the model simply crowded it out of attention.</p>
+      <p><strong>"In context" is not "applied".</strong> The repository states its governing law in one line, and everything in the plugin follows from it:</p>
+      <p class="key">A Core rule is only as durable as the mechanism that re-asserts it. Storing a rule in a file is not enforcement; the file may never be read.</p>
+      <p class="stagenote">a context window fills with the work of the session, and the rules loaded at the start dim as they are pushed out of attention.</p>
+    </article>
+
+    <article class="step" data-act="2" id="s3">
+      <p class="n"><b>Answer 1</b> · scene 3 of 8</p>
+      <h2>One vault, shared by every session</h2>
+      <p>Golden Thread points every session at one Obsidian vault: a folder of markdown files under git. The pointer lives in <code>~/.claude/vault-config.json</code>, so every project and every session finds the same place.</p>
+      <p>Sessions read from the vault at startup with <code>/gt:gt-open</code>, look things up while working with <code>/gt:gt-query</code>, and write back what they learned at the end with <code>/gt:gt-work</code>. The session dies. The vault does not. That connection is the golden thread.</p>
+      <p class="stagenote">the same three projects, now tied to a vault. Sessions still come and go, but their facts flow into the vault and come back out at the next start.</p>
+    </article>
+
+    <article class="step" data-act="3" id="s4">
+      <p class="n"><b>Answer 1</b> · scene 4 of 8</p>
+      <h2>Facts climb a ladder and never come back down</h2>
+      <p>Inside the vault, knowledge sits at one of five levels. A finding lands in a project's <code>memory/</code>. If it holds, it moves into the project's <code>research.md</code> or <code>decisions.md</code>. If it applies beyond that project, it becomes a <code>Knowledge/</code> page. If every session needs it, it reaches <code>global-memory/</code>.</p>
+      <p><code>/gt:gt-promote</code> moves a fact up. Nothing moves down and nothing is silently deleted. Some files are immutable by design: the <code>Sources/</code> originals behind Knowledge pages and each project's <code>idea.md</code>. <code>research.md</code> and <code>decisions.md</code> are append-only.</p>
+      <p class="stagenote">the vault opened into its five tiers. One fact climbs from the session floor to global memory; the locked files sit beside the tiers they protect.</p>
+    </article>
+
+    <article class="step" data-act="4" id="s5">
+      <p class="n"><b>Answer 1</b> · scene 5 of 8</p>
+      <h2>Opening a project is cheap on purpose</h2>
+      <p><code>/gt:gt-open</code> reads a project's documents in a fixed order: source, idea, research, decisions, design, spec, runbook. Then it reads only <code>memory/MEMORY.md</code>, an index with one line per memory file, and stops.</p>
+      <p>Memory files load on demand, when the task touches their subject. A project with 40 memory notes costs about 45 lines to open instead of about 2,000, which leaves the context window for the actual work. That is why the one-line descriptions in the index matter: they are the whole basis for deciding what is worth opening.</p>
+      <p class="stagenote">the seven documents light up in reading order, then the index. The shelf of memory files stays dark until one is asked for.</p>
+    </article>
+
+    <article class="step" data-act="5" id="s6">
+      <p class="n"><b>Answer 2</b> · scene 6 of 8</p>
+      <h2>Core rules are re-asserted on every turn</h2>
+      <p>Every rule in the vault carries a scope (<code>core</code>, <code>context</code>, <code>generic</code>) and an enforcement strength (<code>reminder</code> or <code>validated</code>). A Core rule is not trusted to a file.</p>
+      <p>A <code>UserPromptSubmit</code> hook, <code>inject_core_rules.sh</code>, runs before the model sees each prompt. It reads <code>core-rules/*.md</code> from the vault at that moment and injects each rule's imperative, plus the current timestamp, into the turn. Edit a rule file and the next turn injects the new text; no rule text is ever copied into the script. If the vault cannot be reached, the hook announces the degraded state loudly instead of going quiet.</p>
+      <p class="stagenote">one turn as a loop. The prompt passes the inject gate, which pulls the rules down the thread from the vault and sends them along with the prompt to the model.</p>
+    </article>
+
+    <article class="step" data-act="6" id="s7">
+      <p class="n"><b>Answer 2</b> · scene 7 of 8</p>
+      <h2>Validated rules are checked, not just reminded</h2>
+      <p>A reminder still depends on the model's discipline. Five rules are <strong>validated</strong>: a hook inspects what is about to happen and blocks it. Three <code>PreToolUse</code> guards deny a write to a vault file another live session has claimed, a vault-mutating command that does not name its vault, and a <code>git commit</code> of code whose tests have not been seen to pass. The <code>Stop</code> hook reads the finished reply and blocks it if it leaks a secret or does not begin with the timestamp.</p>
+      <p>The timestamp is the canary. It costs nothing and it is visible on every reply, so when it disappears you know enforcement broke. Every guard fails open: anything it cannot parse is allowed, because a guard that blocks wrongly gets switched off, and then it guards nothing.</p>
+      <p class="stagenote">the same loop. The guard gate turns a bad tool call away; the stop gate bounces a reply without its timestamp back to the model, then lets the corrected one through.</p>
+    </article>
+
+    <article class="step" data-act="7" id="s8">
+      <p class="n"><b>Answer 2</b> · scene 8 of 8</p>
+      <h2>The plumbing is built to survive renames</h2>
+      <p>Hooks install to <code>~/.claude/golden-thread/hooks/</code>, outside the vault, and <code>~/.claude/settings.json</code> points at them by absolute path. The rules stay in the vault and are found at run time by <code>gt_paths.py</code>: the recorded path first, then a search for the folder that holds <code>core_rule_priority_model.md</code>, which it then re-records. Rename a project or move the vault and the hooks keep firing.</p>
+      <p>Two checks keep the whole thing honest. <code>gt_lint.py</code> has a <code>core-unenforced</code> check for a rule that is stored but wired to nothing, the exact failure the system exists to close. And the release gate proves wiring by installing into a throwaway home and asking every shipped hook where it ended up, rather than by reading the installer.</p>
+      <p class="stagenote">the pointers. Settings finds the hooks; the hooks find the vault; the vault moves and the thread follows. One rule with no wiring is flagged.</p>
+    </article>
+
+  </div>
+</section>
+
+<section class="ref">
+  <h2>The same system, as a reference</h2>
+  <p class="lede">Everything above in tables, for when you come back to look something up.</p>
+
+  <div class="ref-blocks">
+    <div class="ref-block">
+      <h3>One session, start to finish</h3>
+<pre class="loop"><b>/gt:gt-open</b> my-project     <i>read docs in order, index memory, summarise</i>
+   …work…
+<b>/gt:gt-route</b>               <i>mid-session: what has this become, where does it belong</i>
+   …work…
+<b>/gt:gt-work</b>                <i>write findings, ADRs, design changes back to the vault</i>
+
+periodically
+<b>/gt:gt-lint</b>                <i>broken links, orphans, unenforced Core rules</i>
+<b>/gt:gt-doctor</b>              <i>version, hook wiring, pending migrations, one report</i>
+<b>/gt:gt-promote</b>             <i>move a fact up the ladder</i>
+<b>/gt:gt-review</b>              <i>file the inbox into projects</i></pre>
+    </div>
+
+    <div class="ref-block">
+      <h3>Three hook points in every turn</h3>
+      <div class="tbl"><table>
+        <colgroup><col style="width:17%"><col style="width:25%"><col style="width:58%"></colgroup>
+        <thead><tr><th>Event</th><th>Script</th><th>What it does</th></tr></thead>
+        <tbody>
+          <tr><td><code>UserPromptSubmit</code></td><td><code>inject_core_rules.sh</code></td><td>Reads the Core rules from the vault and injects them, with the timestamp, before the model reads the prompt</td></tr>
+          <tr><td><code>PreToolUse</code></td><td><code>guard_session_claims.sh</code></td><td>Denies a Write or Edit to a vault file another live session holds</td></tr>
+          <tr><td><code>PreToolUse</code></td><td><code>guard_vault_writes.sh</code></td><td>Denies a vault-mutating command that names no <code>--vault</code> or <code>--dry-run</code></td></tr>
+          <tr><td><code>PreToolUse</code></td><td><code>guard_test_before_commit.sh</code></td><td>Denies a commit of code with no passing test receipt newer than the staged files</td></tr>
+          <tr><td><code>Stop</code></td><td><code>validate_response.sh</code></td><td>Blocks a reply that leaks a secret or does not begin with the timestamp</td></tr>
+        </tbody>
+      </table></div>
+    </div>
+
+    <div class="ref-block">
+      <h3>Where things live</h3>
+      <div class="tbl"><table>
+        <colgroup><col style="width:34%"><col style="width:66%"></colgroup>
+        <thead><tr><th>Path</th><th>Role</th></tr></thead>
+        <tbody>
+          <tr><td><code>~/.claude/vault-config.json</code></td><td>The pointer to the vault. Every skill and hook starts here</td></tr>
+          <tr><td><code>~/.claude/settings.json</code></td><td>Registers the hooks by absolute path</td></tr>
+          <tr><td><code>~/.claude/golden-thread/hooks/</code></td><td>The hook scripts, deliberately outside the vault</td></tr>
+          <tr><td><code>&lt;vault&gt;/Projects/&lt;slug&gt;/</code></td><td>One project: README, source, idea, research, decisions, design, spec, runbook, memory/</td></tr>
+          <tr><td><code>&lt;vault&gt;/Projects/golden-thread/core-rules/</code></td><td>The Core rules themselves, read at run time</td></tr>
+          <tr><td><code>&lt;vault&gt;/Knowledge/</code>, <code>Sources/</code></td><td>Cross-project pages, and the immutable originals they cite</td></tr>
+          <tr><td><code>&lt;vault&gt;/global-memory/</code></td><td>Facts loaded in every session</td></tr>
+          <tr><td><code>golden-thread-plugin/golden-thread/&lt;ver&gt;/</code></td><td>In this repo: the plugin's skills, scripts, hooks and templates, one directory per version</td></tr>
+        </tbody>
+      </table></div>
+    </div>
+
+    <div class="ref-block">
+      <h3>The ten Core rules</h3>
+      <div class="tbl"><table>
+        <colgroup><col style="width:26%"><col style="width:14%"><col style="width:60%"></colgroup>
+        <thead><tr><th>Rule</th><th>Tier</th><th>Imperative</th></tr></thead>
+        <tbody>
+          <tr><td><code>concurrent_session_claim</code></td><td><span class="pill v">validated</span></td><td>Register the session and claim a vault file before writing it</td></tr>
+          <tr><td><code>explicit_vault_target</code></td><td><span class="pill v">validated</span></td><td>Name the vault on every mutating tool run</td></tr>
+          <tr><td><code>no_secrets_in_transcript</code></td><td><span class="pill v">validated</span></td><td>Never put a secret's value into the session</td></tr>
+          <tr><td><code>timestamp_every_message</code></td><td><span class="pill v">validated</span></td><td>Begin every reply with the wall-clock timestamp (the canary)</td></tr>
+          <tr><td><code>test_before_commit</code></td><td><span class="pill v">validated</span></td><td>Never commit code whose tests you have not seen pass</td></tr>
+          <tr><td><code>global_memory_scope</code></td><td><span class="pill">reminder</span></td><td><code>global-memory/</code> holds only facts needed in every project</td></tr>
+          <tr><td><code>memory_load_policy</code></td><td><span class="pill">reminder</span></td><td>Do not auto-load the full memory index</td></tr>
+          <tr><td><code>verification_state</code></td><td><span class="pill">reminder</span></td><td>Label every derived figure unverified, self-verified or independently verified</td></tr>
+          <tr><td><code>secrets_live_in_the_store</code></td><td><span class="pill">reminder</span></td><td>A secret's value rests only in the secrets store</td></tr>
+          <tr><td><code>parallel_when_beneficial</code></td><td><span class="pill">reminder</span></td><td>Parallelise divisible work, up to the configured budget</td></tr>
+        </tbody>
+      </table></div>
+    </div>
+  </div>
+
+  <h3 class="read-next">Read next</h3>
+  <div class="next">
+    <a href="../README.md">Repository README</a>
+    <a href="../golden-thread-plugin/ONBOARDING.md">Getting Started</a>
+    <a href="../golden-thread-plugin/MANUAL.md">User Manual</a>
+    <a href="../golden-thread-plugin/golden-thread-developer-guide.html">Developer Guide</a>
+    <a href="workflow.html">Workflow diagram</a>
+    <a href="scenarios.md">End-to-end scenarios</a>
+  </div>
+</section>
+
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js" id="threejs"></script>
+<script>
+(function () {
+  'use strict';
+  const stageEl = document.getElementById('stage');
+  const canvas = document.getElementById('c');
+  const steps = Array.from(document.querySelectorAll('.step'));
+  const titles = steps.map(s => s.querySelector('h2').textContent);
+  const railN = document.getElementById('railN');
+  const railT = document.getElementById('railT');
+  const railDots = document.getElementById('railDots');
+  const reduced = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+  const FONT_SANS = '-apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif';
+  const FONT_MONO = 'Menlo, Consolas, "Liberation Mono", monospace';
+
+  // ---- rail (works even without WebGL) ----
+  steps.forEach((s, i) => {
+    const b = document.createElement('button');
+    b.type = 'button'; b.textContent = String(i + 1); b.setAttribute('role', 'tab');
+    b.setAttribute('aria-label', 'Scene ' + (i + 1) + ': ' + titles[i]);
+    b.addEventListener('click', () => s.scrollIntoView({ behavior: reduced ? 'auto' : 'smooth', block: 'center' }));
+    railDots.appendChild(b);
+  });
+  let act = 0;
+  const listeners = [];
+  function setAct(i) {
+    if (i === act && railDots.children[i].getAttribute('aria-current') === 'true') return;
+    act = i;
+    railN.textContent = (i + 1) + ' / ' + steps.length;
+    railT.textContent = titles[i];
+    Array.from(railDots.children).forEach((b, k) => b.setAttribute('aria-current', k === i ? 'true' : 'false'));
+    listeners.forEach(fn => fn(i));
+  }
+  setAct(0);
+  const io = new IntersectionObserver(entries => {
+    entries.forEach(e => { if (e.isIntersecting) setAct(Number(e.target.dataset.act)); });
+  }, { rootMargin: '-45% 0px -45% 0px', threshold: 0 });
+  steps.forEach(s => io.observe(s));
+
+  if (!window.THREE) { stageEl.classList.add('no-gl'); return; }
+  let renderer;
+  try {
+    renderer = new THREE.WebGLRenderer({ canvas, antialias: true, alpha: false, powerPreference: 'low-power' });
+  } catch (err) { stageEl.classList.add('no-gl'); return; }
+  renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
+
+  // ---- tokens ----
+  const css = () => getComputedStyle(document.documentElement);
+  const tok = name => css().getPropertyValue(name).trim();
+  const col = name => new THREE.Color(tok(name));
+  const C = {};
+  function readTokens() {
+    ['stage', 'stage-grid', 'stage-grid-2', 'stage-fog', 's-ink', 's-ink-soft', 's-gold', 's-gold-bright', 's-session', 's-project',
+      's-vault', 's-hook', 's-rule', 's-task', 's-good', 's-crit', 's-t0', 's-t1', 's-t2', 's-t3', 's-t4'].forEach(n => { C[n] = col('--' + n); });
+  }
+  readTokens();
+
+  // ---- scene ----
+  const scene = new THREE.Scene();
+  scene.background = C.stage.clone();
+  scene.fog = new THREE.Fog(C['stage-fog'].clone(), 20, 50);
+  const camera = new THREE.PerspectiveCamera(36, 1, 0.1, 100);
+  const hemi = new THREE.HemisphereLight(0xffffff, 0x444444, 0.9); scene.add(hemi);
+  const key = new THREE.DirectionalLight(0xffffff, 0.75); key.position.set(4, 8, 6); scene.add(key);
+  const fill = new THREE.DirectionalLight(0xffffff, 0.25); fill.position.set(-6, 4, -4); scene.add(fill);
+  let grid = null;
+  function buildGrid() {
+    if (grid) { scene.remove(grid); grid.geometry.dispose(); grid.material.dispose(); }
+    grid = new THREE.GridHelper(40, 40, C['stage-grid'], C['stage-grid-2']);
+    grid.position.y = -0.01; grid.material.transparent = true; grid.material.opacity = 0.6; scene.add(grid);
+  }
+  buildGrid();
+
+  // ---- entities with smoothed targets ----
+  const ents = [];
+  const V3 = (x, y, z) => new THREE.Vector3(x, y, z);
+  function makeEnt(group, mats, opts) {
+    const e = Object.assign({
+      obj: group, mats, target: { pos: group.position.clone(), scale: V3(1, 1, 1), opacity: 0 },
+      opacity: 0, rate: 5, colorTargets: null, base: mats.map(m => m.opacity == null ? 1 : m.opacity),
+    }, opts || {});
+    mats.forEach(m => { m.transparent = true; });
+    group.visible = false;
+    ents.push(e);
+    scene.add(group);
+    return e;
+  }
+  function show(e, pos, opacity, scale) {
+    if (pos) e.target.pos.set(pos[0], pos[1], pos[2]);
+    e.target.opacity = opacity == null ? 1 : opacity;
+    if (scale != null) { if (typeof scale === 'number') e.target.scale.set(scale, scale, scale); else e.target.scale.set(scale[0], scale[1], scale[2]); }
+    else e.target.scale.set(1, 1, 1);
+  }
+  function hide(e) { e.target.opacity = 0; }
+  function hideAll() { ents.forEach(hide); }
+  function tint(e, color, emissiveStrength) {
+    e.mats.forEach(m => {
+      if (m.isSpriteMaterial) return;
+      if (m.color) m.color.copy(color);
+      if (m.emissive) { m.emissive.copy(color); m.emissiveIntensity = emissiveStrength == null ? 0.15 : emissiveStrength; }
+    });
+  }
+  function glow(e, strength) { e.mats.forEach(m => { if (m.emissive) m.emissiveIntensity = strength; }); }
+
+  // ---- labels ----
+  const labels = [];
+  const LS = 1.5; // labels are sized for a camera that backs off to fit a tall stage
+  function labelTexture(text, o) {
+    const dpr = 2;
+    const cv = document.createElement('canvas'); const ctx = cv.getContext('2d');
+    const font = (o.weight || 500) + ' ' + (o.px || 26) + 'px ' + (o.mono ? FONT_MONO : FONT_SANS);
+    ctx.font = font;
+    const w = Math.ceil(ctx.measureText(text).width) + 24, h = (o.px || 26) + 20;
+    cv.width = w * dpr; cv.height = h * dpr; ctx.scale(dpr, dpr);
+    ctx.font = font; ctx.textBaseline = 'middle';
+    if (o.bg) { ctx.fillStyle = tok(o.bg); roundRect(ctx, 1, 1, w - 2, h - 2, 6); ctx.fill(); }
+    ctx.fillStyle = tok(o.color || '--s-ink'); ctx.textAlign = 'center';
+    ctx.fillText(text, w / 2, h / 2);
+    const tex = new THREE.CanvasTexture(cv); tex.minFilter = THREE.LinearFilter;
+    return { tex, w, h };
+  }
+  function roundRect(ctx, x, y, w, h, r) {
+    ctx.beginPath(); ctx.moveTo(x + r, y); ctx.arcTo(x + w, y, x + w, y + h, r); ctx.arcTo(x + w, y + h, x, y + h, r);
+    ctx.arcTo(x, y + h, x, y, r); ctx.arcTo(x, y, x + w, y, r); ctx.closePath();
+  }
+  function label(text, o) {
+    o = o || {};
+    const { tex, w, h } = labelTexture(text, o);
+    const mat = new THREE.SpriteMaterial({ map: tex, transparent: true, depthTest: false, depthWrite: false });
+    const sp = new THREE.Sprite(mat);
+    const s = (o.size || 0.55) * LS;
+    sp.scale.set(s * w / h, s, 1);
+    sp.userData = { text, o };
+    labels.push(sp);
+    return sp;
+  }
+  function refreshLabels() {
+    labels.forEach(sp => {
+      const { tex, w, h } = labelTexture(sp.userData.text, sp.userData.o);
+      sp.material.map.dispose(); sp.material.map = tex; sp.material.needsUpdate = true;
+      const s = (sp.userData.o.size || 0.55) * LS; sp.scale.set(s * w / h, s, 1);
+    });
+  }
+
+  // ---- builders ----
+  const std = (color, o) => new THREE.MeshStandardMaterial(Object.assign({ color, roughness: 0.55, metalness: 0.05, emissive: color, emissiveIntensity: 0.12 }, o || {}));
+  function boxEnt(w, h, d, color, o) {
+    o = o || {};
+    const g = new THREE.Group();
+    const mat = std(color, { opacity: o.alpha == null ? 1 : o.alpha });
+    const m = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), mat);
+    m.position.y = h / 2; g.add(m);
+    const mats = [mat];
+    if (o.label) {
+      const sp = label(o.label, o.labelOpts); sp.position.set(0, h + (o.labelDy == null ? 0.45 : o.labelDy), 0); g.add(sp); mats.push(sp.material);
+    }
+    return makeEnt(g, mats, { mesh: m, labelSprite: mats[1] ? g.children[1] : null });
+  }
+  function sphereEnt(r, color, o) {
+    o = o || {};
+    const mat = std(color, { emissiveIntensity: o.glow == null ? 0.35 : o.glow });
+    const m = new THREE.Mesh(new THREE.SphereGeometry(r, 18, 14), mat);
+    const g = new THREE.Group(); g.add(m);
+    return makeEnt(g, [mat], { mesh: m });
+  }
+  function cylEnt(r, h, color, o) {
+    o = o || {};
+    const mat = std(color, { opacity: o.alpha == null ? 1 : o.alpha, emissiveIntensity: 0.3 });
+    const m = new THREE.Mesh(new THREE.CylinderGeometry(r, r, h, 28, 1, true), mat);
+    mat.side = THREE.DoubleSide;
+    m.position.y = h / 2;
+    const g = new THREE.Group(); g.add(m);
+    const mats = [mat];
+    if (o.label) { const sp = label(o.label, o.labelOpts); sp.position.set(0, h + 0.4, 0); g.add(sp); mats.push(sp.material); }
+    return makeEnt(g, mats, { mesh: m });
+  }
+  function labelEnt(text, o) {
+    const sp = label(text, o); const g = new THREE.Group(); g.add(sp);
+    return makeEnt(g, [sp.material], {});
+  }
+  // A thread between two entities: a tube regenerated when its ends move.
+  function threadEnt(color, o) {
+    o = o || {};
+    const mat = std(color, { emissiveIntensity: 0.5, roughness: 0.4 });
+    const g = new THREE.Group();
+    const e = makeEnt(g, [mat], { a: null, b: null, aOff: V3(0, 0, 0), bOff: V3(0, 0, 0), sag: o.sag == null ? 0.8 : o.sag, radius: o.radius || 0.035, mesh: null, last: null });
+    e.update = function () {
+      if (!this.a || !this.b) return;
+      const p0 = this.a.obj.position.clone().add(this.aOff), p1 = this.b.obj.position.clone().add(this.bOff);
+      const k = p0.x.toFixed(2) + p0.y.toFixed(2) + p0.z.toFixed(2) + p1.x.toFixed(2) + p1.y.toFixed(2) + p1.z.toFixed(2);
+      if (k === this.last) return;
+      this.last = k;
+      const mid = p0.clone().add(p1).multiplyScalar(0.5); mid.y += this.sag;
+      const curve = new THREE.QuadraticBezierCurve3(p0, mid, p1);
+      const geo = new THREE.TubeGeometry(curve, 24, this.radius, 6, false);
+      if (this.mesh) { this.mesh.geometry.dispose(); this.mesh.geometry = geo; }
+      else { this.mesh = new THREE.Mesh(geo, mat); this.obj.add(this.mesh); }
+      this.curve = curve;
+    };
+    return e;
+  }
+  function attach(th, a, b, aOff, bOff) {
+    th.a = a; th.b = b; th.aOff.set(aOff[0], aOff[1], aOff[2]); th.bOff.set(bOff[0], bOff[1], bOff[2]); th.last = null;
+  }
+
+  // ---- the cast ----
+  const projNames = ['pizzabot-3000', 'api-gateway', 'chrome-extension'];
+  const projX = [-4.2, 0, 4.2];
+  const proj = projNames.map((n, i) => boxEnt(1.6, 0.5, 1.2, C['s-project'], { label: n, labelOpts: { mono: true, px: 24, size: 0.42, color: '--s-ink-soft' }, labelDy: -1.15 }));
+  proj.forEach(p => { p.labelSprite.position.y = -0.35; });
+  const sess = projX.map((x, i) => cylEnt(0.55, 2.0, C['s-session'], { alpha: 0.35, label: 'session', labelOpts: { px: 22, size: 0.4, color: '--s-ink-soft' } }));
+  const FACTS = 30;
+  const facts = []; for (let i = 0; i < FACTS; i++) facts.push(sphereEnt(0.12, C['s-gold']));
+  const factSeed = facts.map(() => ({ a: Math.random() * Math.PI * 2, r: 0.75 + Math.random() * 0.45, y: 0.5 + Math.random() * 1.2, dx: (Math.random() - 0.5) * 3, dz: (Math.random() - 0.5) * 3, sp: 0.6 + Math.random() * 0.8 }));
+
+  const pThreads = [0, 1, 2].map(() => threadEnt(C['s-gold'], { sag: 1.4 }));
+  const vault = boxEnt(3.2, 4.2, 2.2, C['s-vault'], { alpha: 0.22, label: 'the vault', labelOpts: { px: 28, size: 0.6 } });
+  vault.mesh.material.roughness = 0.2;
+  const tierNames = ['session conversation', 'memory/', 'research · decisions · design', 'Knowledge/', 'global-memory/'];
+  const tierW = [3.4, 3.0, 2.6, 2.2, 1.8];
+  const tiers = tierNames.map((n, i) => boxEnt(tierW[i], 0.32, 1.7, C['s-t' + i], { alpha: 0.95, label: n, labelOpts: { mono: true, px: 22, size: 0.4 }, labelDy: 0.28 }));
+  tiers.forEach(t => { t.labelSprite.position.set(0, 0.16, 1.55); });
+  const locks = [
+    labelEnt('Sources/  immutable', { mono: true, px: 20, size: 0.36, color: '--s-ink-soft' }),
+    labelEnt('idea.md  immutable', { mono: true, px: 20, size: 0.36, color: '--s-ink-soft' }),
+    labelEnt('research.md · decisions.md  append-only', { mono: true, px: 20, size: 0.36, color: '--s-ink-soft' }),
+  ];
+  const climber = sphereEnt(0.17, C['s-gold-bright'], { glow: 0.7 });
+  const promoteLbl = labelEnt('gt-promote ↑', { mono: true, px: 22, size: 0.4, color: '--s-gold' });
+
+  // act 2: context column, rule chips, task balls (facts reused)
+  const ctxCol = boxEnt(2.4, 5.0, 1.6, C['s-session'], { alpha: 0.12, label: 'context window', labelOpts: { px: 24, size: 0.5, color: '--s-ink-soft' } });
+  ctxCol.mesh.material.roughness = 0.2;
+  const ruleNames = ['timestamp', 'no secrets', 'claim first', 'name the vault'];
+  const rules = ruleNames.map(n => boxEnt(1.5, 0.14, 0.7, C['s-rule'], { alpha: 1, label: n, labelOpts: { mono: true, px: 20, size: 0.34 }, labelDy: 0.06 }));
+  rules.forEach(r => { r.labelSprite.position.set(0, 0.07, 0.6); });
+  const claudeMd = boxEnt(1.6, 0.9, 1.1, C['s-project'], { alpha: 0.9, label: 'CLAUDE.md', labelOpts: { mono: true, px: 22, size: 0.42 } });
+  const attention = labelEnt('← newest work, most attention', { px: 22, size: 0.42, color: '--s-ink-soft' });
+
+  // act 5: reading order shelf
+  const docNames = ['source', 'idea', 'research', 'decisions', 'design', 'spec', 'runbook'];
+  const docs = docNames.map(n => boxEnt(0.42, 1.1, 0.9, C['s-project'], { label: n, labelOpts: { mono: true, px: 20, size: 0.26, color: '--s-ink-soft' }, labelDy: -1.55 }));
+  docs.forEach(d => { d.labelSprite.position.y = -0.3; });
+  const indexBox = boxEnt(0.42, 1.1, 0.9, C['s-gold'], { label: 'MEMORY.md', labelOpts: { mono: true, px: 20, size: 0.26, color: '--s-gold' }, labelDy: -1.55 });
+  indexBox.labelSprite.position.y = -0.3;
+  const MEM = 40; const memFiles = []; for (let i = 0; i < MEM; i++) memFiles.push(boxEnt(0.26, 0.36, 0.5, C['s-task'], { alpha: 0.9 }));
+  const shelfLbl = labelEnt('memory/  40 files, loaded on demand', { mono: true, px: 20, size: 0.36, color: '--s-ink-soft' });
+  const reader = sphereEnt(0.16, C['s-gold-bright'], { glow: 0.8 });
+
+  // acts 6-7: the turn loop
+  const RX = 4.6, RZ = 2.7, LY = 0.6;
+  const loopPts = []; for (let i = 0; i < 64; i++) { const a = Math.PI + (i / 64) * Math.PI * 2; loopPts.push(V3(RX * Math.cos(a), LY, RZ * Math.sin(a))); }
+  const loopCurve = new THREE.CatmullRomCurve3(loopPts, true, 'catmullrom', 0.5);
+  const loopMat = std(C['s-ink-soft'], { emissiveIntensity: 0.1, opacity: 0.7 });
+  const loopMesh = new THREE.Mesh(new THREE.TubeGeometry(loopCurve, 128, 0.03, 6, true), loopMat);
+  const loopG = new THREE.Group(); loopG.add(loopMesh);
+  const loop = makeEnt(loopG, [loopMat], {});
+  const stations = [
+    { u: 0.00, name: 'prompt', gate: false },
+    { u: 0.13, name: 'UserPromptSubmit · inject rules', gate: true },
+    { u: 0.30, name: 'model', gate: false },
+    { u: 0.43, name: 'PreToolUse · guards', gate: true },
+    { u: 0.55, name: 'tools', gate: false },
+    { u: 0.70, name: 'reply', gate: false },
+    { u: 0.83, name: 'Stop · validate', gate: true },
+  ];
+  stations.forEach(s => {
+    const p = loopCurve.getPointAt(s.u);
+    s.pos = [p.x, 0, p.z];
+    if (s.gate) {
+      s.ent = boxEnt(0.14, 1.5, 1.2, C['s-hook'], { alpha: 0.6, label: s.name, labelOpts: { mono: true, px: 22, size: 0.4, color: '--s-hook' }, labelDy: 0.35 });
+      const t = loopCurve.getTangentAt(s.u); s.ent.obj.rotation.y = Math.atan2(t.x, t.z) + Math.PI / 2;
+    } else {
+      s.ent = cylEnt(0.42, 0.5, C['s-project'], { alpha: 1, label: s.name, labelOpts: { px: 22, size: 0.42 } });
+      s.ent.mesh.material.side = THREE.FrontSide; s.ent.mesh.geometry = new THREE.CylinderGeometry(0.42, 0.42, 0.5, 28);
+    }
+  });
+  const packet = sphereEnt(0.2, C['s-gold-bright'], { glow: 0.7 });
+  const packetLbl = labelEnt('', { mono: true, px: 22, size: 0.4, color: '--s-ink' });
+  const vaultThread = threadEnt(C['s-gold'], { sag: 0.6 });
+  const bead = sphereEnt(0.1, C['s-gold-bright'], { glow: 0.8 });
+  const verdict = labelEnt('', { mono: true, px: 24, size: 0.46, color: '--s-crit' });
+
+  // act 8: locations
+  const settingsBox = boxEnt(1.9, 0.6, 1.2, C['s-project'], { label: '~/.claude/settings.json', labelOpts: { mono: true, px: 20, size: 0.36 }, labelDy: 0.3 });
+  const hooksBox = boxEnt(1.9, 0.9, 1.2, C['s-hook'], { alpha: 0.95, label: '~/.claude/golden-thread/hooks/', labelOpts: { mono: true, px: 20, size: 0.36, color: '--s-hook' }, labelDy: 0.3 });
+  const configBox = boxEnt(1.9, 0.6, 1.2, C['s-project'], { label: '~/.claude/vault-config.json', labelOpts: { mono: true, px: 20, size: 0.36 }, labelDy: 0.3 });
+  const coreChip = boxEnt(1.5, 0.3, 1.0, C['s-rule'], { label: 'core-rules/', labelOpts: { mono: true, px: 20, size: 0.36 }, labelDy: 0.2 });
+  const strayRule = boxEnt(1.3, 0.14, 0.7, C['s-rule'], { label: 'level: core, wired to nothing', labelOpts: { mono: true, px: 18, size: 0.32, color: '--s-crit' }, labelDy: 0.15 });
+  const t1 = threadEnt(C['s-ink-soft'], { sag: 0.4, radius: 0.025 });
+  const t2 = threadEnt(C['s-ink-soft'], { sag: 0.4, radius: 0.025 });
+  const t3 = threadEnt(C['s-gold'], { sag: 1.0 });
+  const t4 = threadEnt(C['s-crit'], { sag: 0.2, radius: 0.02 });
+  const lintLbl = labelEnt('gt-lint: core-unenforced', { mono: true, px: 20, size: 0.36, color: '--s-crit' });
+  const pathLbl = labelEnt('gt_paths.py resolves at run time', { mono: true, px: 20, size: 0.36, color: '--s-gold' });
+  const absLbl = labelEnt('absolute path', { mono: true, px: 18, size: 0.32, color: '--s-ink-soft' });
+  const vpLbl = labelEnt('vault_path', { mono: true, px: 18, size: 0.32, color: '--s-ink-soft' });
+  const moveLbl = labelEnt('', { mono: true, px: 20, size: 0.36, color: '--s-ink-soft' });
+
+  // ---- camera rig ----
+  const cam = { target: V3(0, 1, 0), radius: 11, theta: 0.35, phi: 1.15 };
+  const camNow = { target: V3(0, 1, 0), radius: 11, theta: 0.35, phi: 1.15 };
+  const user = { dTheta: 0, dPhi: 0 };
+  let dragging = false, lastX = 0, lastY = 0, idleSince = 0;
+  const onDown = (x, y) => { dragging = true; lastX = x; lastY = y; stageEl.classList.add('dragging'); };
+  const onMove = (x, y) => { if (!dragging) return; user.dTheta -= (x - lastX) * 0.006; user.dPhi -= (y - lastY) * 0.004; user.dPhi = Math.max(-0.6, Math.min(0.5, user.dPhi)); lastX = x; lastY = y; idleSince = performance.now(); };
+  const onUp = () => { dragging = false; stageEl.classList.remove('dragging'); };
+  canvas.addEventListener('pointerdown', e => { onDown(e.clientX, e.clientY); canvas.setPointerCapture(e.pointerId); });
+  canvas.addEventListener('pointermove', e => onMove(e.clientX, e.clientY));
+  canvas.addEventListener('pointerup', onUp); canvas.addEventListener('pointercancel', onUp);
+
+  function setCam(t, r, th, ph) { cam.target.set(t[0], t[1], t[2]); cam.radius = r; cam.theta = th; cam.phi = ph; }
+
+  // ---- acts ----
+  const state = {};
+  function actProblemA() {
+    hideAll(); setCam([0, 0.9, 0], 15, 0.35, 1.15);
+    proj.forEach((p, i) => show(p, [projX[i], 0, 0]));
+    sess.forEach((s, i) => show(s, [projX[i], 0.5, 0], 0));
+    facts.forEach(f => { f.rate = 3; tint(f, C['s-gold'], 0.35); });
+    state.mode = 'scatter';
+  }
+  function actProblemB() {
+    hideAll(); setCam([0, 2.2, 0], 12, 0.55, 1.2);
+    show(ctxCol, [0, 0, 0]);
+    show(claudeMd, [-3.4, 0, 0]);
+    rules.forEach((r, i) => { show(r, [0, 0.15 + i * 0.28, 0]); tint(r, C['s-rule'], 0.4); });
+    show(attention, [2.6, 4.6, 0], 0.9);
+    facts.forEach(f => { f.rate = 4; tint(f, C['s-task'], 0.15); });
+    state.mode = 'crowd';
+  }
+  function actVault() {
+    hideAll(); setCam([0, 1.4, 0], 16, 0.4, 1.12);
+    proj.forEach((p, i) => show(p, [projX[i] * 1.15, 0, 3.2]));
+    sess.forEach((s, i) => show(s, [projX[i] * 1.15, 0.5, 3.2], 0));
+    show(vault, [0, 0, -2.2]);
+    pThreads.forEach((th, i) => { attach(th, proj[i], vault, [0, 0.5, -0.6], [(i - 1) * 0.8, 0.2, 1.1]); show(th, [0, 0, 0], 0.95); });
+    facts.forEach(f => { f.rate = 3; tint(f, C['s-gold'], 0.35); });
+    state.mode = 'vaultflow';
+  }
+  function actLadder() {
+    hideAll(); setCam([0, 2.3, 0], 12.5, 0.55, 1.22);
+    tiers.forEach((t, i) => show(t, [0, 0.3 + i * 0.95, 0]));
+    show(locks[0], [-5.4, 3.5, 0], 0.9); show(locks[1], [-5.4, 1.55, 0], 0.9); show(locks[2], [-5.6, 2.5, 0], 0.9);
+    show(climber, [0, 0.5, 0.6]); show(promoteLbl, [2.6, 2.4, 0], 0.9);
+    state.mode = 'climb'; state.climbT = 0;
+  }
+  function actLazy() {
+    hideAll(); setCam([-0.4, 0.9, 0], 13, 0.15, 1.1);
+    docs.forEach((d, i) => { show(d, [-5.4 + i * 0.85, 0, 0]); tint(d, C['s-project'], 0.12); });
+    show(indexBox, [0.6, 0, 0]); tint(indexBox, C['s-gold'], 0.2);
+    memFiles.forEach((m, i) => { const r = Math.floor(i / 8), c = i % 8; show(m, [2.0 + c * 0.42, r * 0.5, 0.4 - r * 0.2], 0.55); tint(m, C['s-task'], 0.1); });
+    show(shelfLbl, [3.5, 2.9, 0], 0.9);
+    show(reader, [-5.4, 1.45, 0], 0.9);
+    state.mode = 'read'; state.readT = 0;
+  }
+  function actInject() {
+    hideAll(); setCam([0, 0.8, 0], 14, 0.25, 0.98);
+    show(loop, [0, 0, 0], 0.7);
+    stations.forEach(s => { show(s.ent, s.pos); if (s.gate) tint(s.ent, C['s-hook'], 0.25); });
+    show(vault, [0, 2.6, -3.6], 1, [0.55, 0.55, 0.55]);
+    show(packet, [-RX, LY, 0]);
+    rules.forEach(r => { show(r, [0, 0, 0], 0); tint(r, C['s-rule'], 0.4); });
+    const g = stations[1];
+    attach(vaultThread, vault, g.ent, [0, 0.1, 0], [0, 1.5, 0]); vaultThread.sag = 0.3; show(vaultThread, [0, 0, 0], 0.95);
+    show(bead, [0, 3, -3], 0.9);
+    show(packetLbl, [0, 0, 0], 0);
+    state.mode = 'loop'; state.u = 0; state.n = 0; state.validate = false; state.back = null; state.hold = 0;
+  }
+  function actValidate() {
+    hideAll(); setCam([0, 0.8, 0], 14, -0.35, 0.98);
+    show(loop, [0, 0, 0], 0.7);
+    stations.forEach(s => { show(s.ent, s.pos); if (s.gate) tint(s.ent, C['s-hook'], 0.25); });
+    show(vault, [0, 2.6, -3.6], 0.5, [0.55, 0.55, 0.55]);
+    show(packet, [-RX, LY, 0]);
+    show(verdict, [0, 0, 0], 0);
+    attach(vaultThread, vault, stations[1].ent, [0, 0.1, 0], [0, 1.5, 0]); vaultThread.sag = 0.3; show(vaultThread, [0, 0, 0], 0.4);
+    state.mode = 'loop'; state.u = 0.3; state.n = 0; state.validate = true; state.back = null; state.hold = 0;
+  }
+  function actPlumbing() {
+    hideAll(); setCam([0.4, 1.0, 0], 15.5, 0.3, 1.15);
+    show(settingsBox, [-4.6, 0, 2.0]); show(hooksBox, [-1.2, 0, 2.0]); show(configBox, [-4.6, 0, -2.0]);
+    show(vault, [3.0, 0, -1.2], 1, [0.8, 0.7, 0.8]);
+    show(coreChip, [3.0, 0.5, -1.2]);
+    show(strayRule, [4.8, 2.4, 2.8]);
+    attach(t1, settingsBox, hooksBox, [0.95, 0.3, 0], [-0.95, 0.3, 0]); show(t1, [0, 0, 0], 0.9);
+    attach(t2, configBox, vault, [0.95, 0.3, 0], [-1.3, 0.6, 0]); show(t2, [0, 0, 0], 0.9);
+    attach(t3, hooksBox, coreChip, [0.9, 0.9, 0], [-0.75, 0.3, 0]); show(t3, [0, 0, 0], 1);
+    attach(t4, strayRule, strayRule, [0, 0.1, 0], [-1.7, -0.5, 0.5]); show(t4, [0, 0, 0], 0.9);
+    show(absLbl, [-2.9, 0.1, 2.9], 0.9); show(vpLbl, [-0.8, 0.1, -1.0], 0.9);
+    show(pathLbl, [0.2, 2.8, 0.4], 0.95); show(lintLbl, [4.8, 3.4, 2.8], 0.95); show(moveLbl, [3.0, 4.2, -1.2], 0);
+    state.mode = 'plumb'; state.moveT = 0;
+  }
+  const acts = [actProblemA, actProblemB, actVault, actLadder, actLazy, actInject, actValidate, actPlumbing];
+  listeners.push(i => { user.dTheta = 0; user.dPhi = 0; acts[i](); });
+  acts[0]();
+
+  // ---- per-act motion ----
+  const PERIOD = 7.0;
+  function sessionPhase(t, i) { return ((t + i * 2.3) % PERIOD) / PERIOD; }
+  function sessionCycle(t, atProj) {
+    // sessions grow, live, fade above their project
+    sess.forEach((s, i) => {
+      const p = sessionPhase(t, i), P = atProj(i);
+      let o = 0, sy = 0.2;
+      if (p < 0.12) { o = 0.35 * (p / 0.12); sy = 0.2 + 0.8 * (p / 0.12); }
+      else if (p < 0.62) { o = 0.35; sy = 1; }
+      else if (p < 0.75) { o = 0.35 * (1 - (p - 0.62) / 0.13); sy = 1; }
+      s.target.pos.set(P[0], 0.5, P[2]); s.target.opacity = o; s.target.scale.set(1, sy, 1);
+    });
+  }
+  const factsPer = 10;
+  function tickScatter(t) {
+    sessionCycle(t, i => [projX[i], 0, 0]);
+    facts.forEach((f, k) => {
+      const i = Math.floor(k / factsPer), j = k % factsPer, sd = factSeed[k], p = sessionPhase(t, i);
+      const cx = projX[i];
+      if (p < 0.12) { f.target.pos.set(cx, 0.9, 0); f.target.opacity = 0; f.target.scale.set(0.4, 0.4, 0.4); }
+      else if (p < 0.62) {
+        const born = 0.12 + (j / factsPer) * 0.4; if (p < born) return;
+        const a = sd.a + t * sd.sp; f.target.pos.set(cx + Math.cos(a) * sd.r, 0.6 + sd.y, Math.sin(a) * sd.r); f.target.opacity = 1; f.target.scale.set(1, 1, 1);
+      } else {
+        const q = (p - 0.62) / 0.38; f.target.pos.set(cx + sd.dx * (1 + q * 2), Math.max(0.15, 0.6 + sd.y - q * 1.6), sd.dz * (1 + q * 2)); f.target.opacity = Math.max(0, 0.9 - q * 1.2); f.target.scale.set(0.7, 0.7, 0.7);
+      }
+    });
+  }
+  function tickVaultFlow(t) {
+    sessionCycle(t, i => [projX[i] * 1.15, 0, 3.2]);
+    facts.forEach((f, k) => {
+      const i = Math.floor(k / factsPer), j = k % factsPer, sd = factSeed[k], p = sessionPhase(t, i);
+      const cx = projX[i] * 1.15, cz = 3.2;
+      // slot inside the vault
+      const sx = -1.1 + (j % 5) * 0.55, sy = 0.5 + Math.floor(j / 5) * 0.55 + i * 1.15, sz = -2.2 + (i - 1) * 0.5;
+      if (p < 0.12) { const q = p / 0.12; f.target.pos.set(sx + (cx - sx) * q, sy + (1.4 - sy) * q, sz + (cz - sz) * q); f.target.opacity = 1; f.target.scale.set(1, 1, 1); }
+      else if (p < 0.62) { const a = sd.a + t * sd.sp; f.target.pos.set(cx + Math.cos(a) * sd.r, 0.6 + sd.y, cz + Math.sin(a) * sd.r); f.target.opacity = 1; f.target.scale.set(1, 1, 1); }
+      else { f.target.pos.set(sx, sy, sz); f.target.opacity = 0.95; f.target.scale.set(0.9, 0.9, 0.9); }
+    });
+  }
+  function tickCrowd(t) {
+    const p = (t % 9) / 9;
+    facts.forEach((f, k) => {
+      const sd = factSeed[k], born = (k / FACTS) * 0.7;
+      if (p < born) { f.target.pos.set(sd.dx * 1.5, 6.5, sd.dz); f.target.opacity = 0; return; }
+      const level = 0.4 + (k / FACTS) * 4.2;
+      f.target.pos.set(sd.dx * 0.55, level, sd.dz * 0.4); f.target.opacity = 0.9; f.target.scale.set(1.3, 1.3, 1.3);
+    });
+    rules.forEach((r, i) => {
+      const dim = Math.max(0, Math.min(1, (p - 0.25 - i * 0.08) / 0.4));
+      r.target.opacity = 1 - dim * 0.82; r.target.pos.set(0, 0.15 + i * 0.28 - dim * 0.1, 0);
+      glow(r, 0.4 * (1 - dim));
+    });
+  }
+  function tickClimb(t, dt) {
+    state.climbT += dt;
+    const k = state.climbT / 1.35;
+    if (k > 6.5) { state.climbT = 0; }
+    const tier = Math.min(4, Math.floor(k)), frac = k - Math.floor(k);
+    const lvl = tier < 4 ? tier + Math.min(1, frac * 1.6) : 4;
+    climber.target.pos.set(0.2, 0.79 + lvl * 0.95, 0.55);
+    climber.target.opacity = k < 5.4 ? 1 : (k < 6.2 ? Math.max(0, 1 - (k - 5.4) / 0.8) : 0);
+    tiers.forEach((tr, i) => glow(tr, i === tier ? 0.5 : 0.15));
+    promoteLbl.target.pos.set(2.6, 0.9 + tier * 0.95, 0);
+  }
+  function tickRead(t, dt) {
+    state.readT += dt;
+    const T = state.readT % 8.5;
+    docs.forEach((d, i) => { const on = T > i * 0.55 && T < 5.2; glow(d, on ? 0.6 : 0.12); tint(d, on ? C['s-gold'] : C['s-project'], on ? 0.6 : 0.12); });
+    const idxOn = T > 4.0 && T < 7.8; tint(indexBox, C['s-gold'], idxOn ? 0.9 : 0.2);
+    const rx = T < 4.0 ? -5.4 + Math.min(6, Math.floor(T / 0.55)) * 0.85 : 0.6;
+    reader.target.pos.set(rx, 1.45, 0);
+    reader.target.opacity = T < 7.8 ? 0.9 : 0;
+    memFiles.forEach((m, i) => {
+      const asked = (i === 13 || i === 27) && T > 6.0 && T < 7.8;
+      m.target.opacity = asked ? 1 : 0.55; tint(m, asked ? C['s-gold-bright'] : C['s-task'], asked ? 0.8 : 0.1);
+      m.target.scale.set(asked ? 1.5 : 1, asked ? 1.5 : 1, asked ? 1.5 : 1);
+    });
+  }
+  function tickLoop(t, dt) {
+    const speed = 1 / 9;
+    if (state.hold > 0) { state.hold -= dt; }
+    else if (state.back != null) {
+      state.u -= dt * speed * 1.8;
+      if (state.u <= state.back) { state.u = state.back; state.back = null; state.hold = 0.5; verdict.target.opacity = 0; }
+    } else {
+      state.u += dt * speed;
+      if (state.u >= 1) { state.u -= 1; state.n++; }
+    }
+    const P = loopCurve.getPointAt(((state.u % 1) + 1) % 1);
+    packet.target.pos.copy(P); packet.rate = 12;
+    const near = s => Math.abs(((state.u - s.u + 1.5) % 1) - 0.5) < 0.05;
+    stations.forEach(s => { if (s.gate) glow(s.ent, near(s) ? 0.9 : 0.25); });
+    // rules ride behind the packet once they have been injected
+    if (!state.validate) {
+      const injected = state.u > stations[1].u;
+      rules.forEach((r, i) => {
+        const uu = ((state.u - 0.04 - i * 0.03) % 1 + 1) % 1;
+        const q = loopCurve.getPointAt(uu);
+        r.target.pos.set(q.x, LY + 0.45 + i * 0.05, q.z); r.target.opacity = injected ? 1 : 0; r.target.scale.set(0.55, 0.55, 0.55); r.rate = 12;
+      });
+      // a bead runs down the thread from the vault to the gate, timed to the packet's approach
+      if (vaultThread.curve) {
+        const b = ((state.u + 0.12) % 1) / 0.25; const bt = Math.max(0, Math.min(1, b));
+        const bp = vaultThread.curve.getPointAt(bt); bead.target.pos.copy(bp); bead.rate = 14;
+        bead.target.opacity = (state.u > 0.85 || state.u < stations[1].u) ? 0.95 : 0;
+      }
+      packetLbl.target.pos.set(P.x, LY + 0.9, P.z); packetLbl.rate = 12;
+      const txt = injected ? 'prompt + timestamp + 10 rules' : 'prompt';
+      if (packetLbl.obj.children[0].userData.text !== txt) { packetLbl.obj.children[0].userData.text = txt; refreshOne(packetLbl.obj.children[0]); }
+      packetLbl.target.opacity = 0.95;
+    } else {
+      // guard: every third loop, a tool call is turned away (and re-issued); stop: every second loop the reply lacks its timestamp
+      const g = stations[3], v = stations[6];
+      if (state.back == null && state.hold <= 0) {
+        if (near(g) && state.u > g.u && !state.gDone) {
+          state.gDone = true;
+          if (state.n % 3 === 1) { state.back = stations[2].u; state.hold = 0.6; setVerdict('denied: file claimed by another session', '--s-crit', g); tint(packet, C['s-crit'], 0.7); }
+          else setVerdict('allowed', '--s-good', g);
+        }
+        if (near(v) && state.u > v.u && !state.vDone) {
+          if (state.n % 2 === 0 && !state.vBounced) { state.vBounced = true; state.back = stations[2].u; state.hold = 0.6; setVerdict('blocked: reply has no timestamp', '--s-crit', v); tint(packet, C['s-crit'], 0.7); }
+          else { state.vDone = true; setVerdict('begins with the timestamp: ok', '--s-good', v); tint(packet, C['s-gold-bright'], 0.7); }
+        }
+      }
+      if (state.u < 0.05) { state.gDone = false; state.vDone = false; state.vBounced = false; verdict.target.opacity = 0; tint(packet, C['s-gold-bright'], 0.7); }
+      if (state.back != null) tint(packet, C['s-crit'], 0.7);
+    }
+  }
+  function setVerdict(text, colorToken, station) {
+    const sp = verdict.obj.children[0]; sp.userData.text = text; sp.userData.o.color = colorToken; refreshOne(sp);
+    verdict.target.pos.set(station.pos[0], 2.4, station.pos[2]); verdict.target.opacity = 1; verdict.rate = 14;
+    const c = C[colorToken.slice(2)];
+    tint(station.ent, c, 0.9);
+    setTimeout(() => tint(station.ent, C['s-hook'], 0.25), 1400);
+  }
+  function refreshOne(sp) {
+    const { tex, w, h } = labelTexture(sp.userData.text, sp.userData.o);
+    sp.material.map.dispose(); sp.material.map = tex; sp.material.needsUpdate = true;
+    const s = (sp.userData.o.size || 0.55) * LS; sp.scale.set(s * w / h, s, 1);
+  }
+  function tickPlumb(t, dt) {
+    state.moveT += dt;
+    const T = state.moveT % 10;
+    const moved = T > 4 && T < 9;
+    const x = moved ? 5.0 : 3.0;
+    vault.target.pos.set(x, 0, -1.2); coreChip.target.pos.set(x, 0.5, -1.2); vault.rate = 3; coreChip.rate = 3;
+    const sp = moveLbl.obj.children[0];
+    const txt = moved ? 'vault moved: the recorded path is stale, the search finds it' : 'vault moved back';
+    if (sp.userData.text !== txt) { sp.userData.text = txt; refreshOne(sp); }
+    moveLbl.target.pos.set(x, 3.6, -1.2); moveLbl.target.opacity = (T > 4 && T < 7.5) || (T > 9 && T < 9.9) ? 0.95 : 0;
+    glow(t3, moved && T < 5.2 ? 1.2 : 0.5);
+    t4.target.opacity = (Math.floor(T * 2) % 2 === 0) ? 0.9 : 0.35;
+  }
+  const tickers = { scatter: tickScatter, crowd: tickCrowd, vaultflow: tickVaultFlow, climb: tickClimb, read: tickRead, loop: tickLoop, plumb: tickPlumb };
+
+  // ---- frame ----
+  let last = performance.now(), clock = 0, running = true;
+  function resize() {
+    const w = stageEl.clientWidth, h = stageEl.clientHeight;
+    if (canvas.width !== Math.floor(w * renderer.getPixelRatio()) || canvas.height !== Math.floor(h * renderer.getPixelRatio())) {
+      renderer.setSize(w, h, false); camera.aspect = w / h; camera.updateProjectionMatrix();
+    }
+  }
+  function frame(now) {
+    requestAnimationFrame(frame);
+    if (!running) return;
+    let dt = Math.min(0.05, (now - last) / 1000); last = now;
+    if (reduced) dt *= 0.35;
+    clock += dt;
+    resize();
+    (tickers[state.mode] || (() => {}))(clock, dt);
+    ents.forEach(e => {
+      const a = 1 - Math.exp(-dt * e.rate);
+      e.obj.position.lerp(e.target.pos, a);
+      e.obj.scale.lerp(e.target.scale, a);
+      e.opacity += (e.target.opacity - e.opacity) * a;
+      const vis = e.opacity > 0.01 || e.target.opacity > 0.01;
+      e.obj.visible = vis;
+      if (vis) e.mats.forEach((m, i) => { m.opacity = e.base[i] * e.opacity; });
+      if (e.update) e.update();
+    });
+    // camera
+    const ca = 1 - Math.exp(-dt * 2.2);
+    camNow.target.lerp(cam.target, ca);
+    camNow.radius += (cam.radius - camNow.radius) * ca;
+    camNow.theta += (cam.theta - camNow.theta) * ca;
+    camNow.phi += (cam.phi - camNow.phi) * ca;
+    if (!dragging && now - idleSince > 2500) { user.dTheta *= (1 - dt * 0.4); user.dPhi *= (1 - dt * 0.4); }
+    const sway = reduced ? 0 : Math.sin(clock * 0.25) * 0.06;
+    const th = camNow.theta + user.dTheta + sway, ph = Math.max(0.35, Math.min(1.45, camNow.phi + user.dPhi));
+    // a tall stage shows less width, so the camera backs off to keep the scene in frame
+    const R = camNow.radius * Math.max(1, 1.3 / camera.aspect);
+    scene.fog.near = R * 1.1; scene.fog.far = R * 2.6;
+    camera.position.set(
+      camNow.target.x + R * Math.sin(ph) * Math.sin(th),
+      camNow.target.y + R * Math.cos(ph),
+      camNow.target.z + R * Math.sin(ph) * Math.cos(th));
+    camera.lookAt(camNow.target);
+    renderer.render(scene, camera);
+  }
+  requestAnimationFrame(frame);
+
+  // pause when the stage is off screen
+  new IntersectionObserver(en => { running = en[0].isIntersecting; if (running) last = performance.now(); }).observe(stageEl);
+
+  // ---- theme changes ----
+  function retheme() {
+    readTokens();
+    scene.background.copy(C.stage); scene.fog.color.copy(C['stage-fog']);
+    buildGrid();
+    proj.forEach(p => tint(p, C['s-project'], 0.12)); sess.forEach(s => tint(s, C['s-session'], 0.3));
+    tint(vault, C['s-vault'], 0.12); tiers.forEach((t, i) => tint(t, C['s-t' + i], 0.15));
+    tint(ctxCol, C['s-session'], 0.12); tint(claudeMd, C['s-project'], 0.12);
+    rules.forEach(r => tint(r, C['s-rule'], 0.4)); tint(coreChip, C['s-rule'], 0.15); tint(strayRule, C['s-rule'], 0.15);
+    stations.forEach(s => tint(s.ent, s.gate ? C['s-hook'] : C['s-project'], s.gate ? 0.25 : 0.12));
+    loopMat.color.copy(C['s-ink-soft']); loopMat.emissive.copy(C['s-ink-soft']);
+    [vaultThread, t3].concat(pThreads).forEach(e => tint(e, C['s-gold'], 0.5)); [t1, t2].forEach(e => tint(e, C['s-ink-soft'], 0.3)); tint(t4, C['s-crit'], 0.5);
+    tint(settingsBox, C['s-project'], 0.12); tint(configBox, C['s-project'], 0.12); tint(hooksBox, C['s-hook'], 0.25);
+    tint(climber, C['s-gold-bright'], 0.7); tint(packet, C['s-gold-bright'], 0.7); tint(bead, C['s-gold-bright'], 0.8); tint(reader, C['s-gold-bright'], 0.3);
+    refreshLabels();
+    acts[act]();
+  }
+  window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', retheme);
+  new MutationObserver(retheme).observe(document.documentElement, { attributes: true, attributeFilter: ['data-theme'] });
+})();
+</script>
+</body>
+</html>
